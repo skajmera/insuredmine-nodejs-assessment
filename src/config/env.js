@@ -13,5 +13,6 @@ module.exports = {
   upload: {
     chunkSize: Number(process.env.UPLOAD_CHUNK_SIZE) || 500,
     workerPoolSize: Number(process.env.UPLOAD_WORKER_POOL_SIZE) || 4,
+    maxFileSizeMb: Number(process.env.UPLOAD_MAX_FILE_SIZE_MB) || 200,
   },
 };

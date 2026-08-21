@@ -35,16 +35,20 @@ same file is idempotent.
 ### Upload (worker-threads based)
 
 `POST /api/upload` — multipart form, field name `file` (`.csv`, `.xlsx`, `.xls`,
-25MB limit). Requests are rejected above that in `src/middlewares/upload.js`.
+`UPLOAD_MAX_FILE_SIZE_MB` limit, default 200MB — the sample sheet is tiny, but a
+real InsuredMine export across every agent/carrier won't be). Requests over that
+are rejected in `src/middlewares/upload.js`.
 
 The request thread never touches parsing or DB writes directly:
 
-1. A **master-data worker** reads the sheet, dedupes Agent/Account/User/Category/
-   Carrier by their natural key, and upserts them, returning id maps to the main
-   thread. `.csv` files are streamed row-by-row (`fs.createReadStream` piped through
-   `csv-parse`) instead of being read fully into memory — `.xlsx`/`.xls` still go
-   through SheetJS's `readFile`, since the binary spreadsheet format has to be
-   loaded whole regardless of library.
+1. A **master-data worker** reads the sheet in a single pass, deduping
+   Agent/Account/User/Category/Carrier by their natural key as it goes and building
+   the (much smaller) list of policy rows at the same time — it never holds both the
+   full raw rows and a separately-mapped policy list in memory at once. `.csv` files
+   are streamed row-by-row (`fs.createReadStream` piped through `csv-parse`) instead
+   of being read fully into memory first; `.xlsx`/`.xls` still go through SheetJS's
+   `readFile`, since the binary spreadsheet format has to be loaded whole regardless
+   of library. It upserts master data and returns id maps to the main thread.
 2. The policy rows are chunked (`UPLOAD_CHUNK_SIZE`, default 500) and fanned out
    across a **worker pool** (`UPLOAD_WORKER_POOL_SIZE`, capped at `os.cpus().length`)
    that bulk-upserts `Policy` documents in parallel.

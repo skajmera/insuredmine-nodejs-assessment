@@ -18,31 +18,6 @@ function parseDate(value) {
   return Number.isNaN(parsed.getTime()) ? undefined : parsed;
 }
 
-function readCsvRowsStreamed() {
-  return new Promise((resolve, reject) => {
-    const rows = [];
-    fs.createReadStream(filePath)
-      .pipe(parse({ columns: true, skip_empty_lines: true, trim: true }))
-      .on('data', (row) => rows.push(row))
-      .on('end', () => resolve(rows))
-      .on('error', reject);
-  });
-}
-
-function readWorkbookRows() {
-  const workbook = XLSX.readFile(filePath);
-  const sheet = workbook.Sheets[workbook.SheetNames[0]];
-  return XLSX.utils.sheet_to_json(sheet, { defval: '', raw: false });
-}
-
-function readRows() {
-  const ext = path.extname(filePath).toLowerCase();
-  if (ext === '.csv') {
-    return readCsvRowsStreamed();
-  }
-  return readWorkbookRows();
-}
-
 async function upsertByField(Model, field, values, extraByValue) {
   if (!values.length) return [];
 
@@ -62,20 +37,24 @@ async function upsertByField(Model, field, values, extraByValue) {
 
 async function run() {
   await connectDB(mongoUri);
-  const rows = await readRows();
 
   const agentNames = new Set();
   const accountAgentByName = new Map();
   const categoryNames = new Set();
   const carrierNames = new Set();
   const userByEmail = new Map();
+  const policyRows = [];
+  let totalRows = 0;
 
-  rows.forEach((row) => {
+  function consumeRow(row) {
+    totalRows += 1;
+
     const agentName = String(row.agent || '').trim();
     const accountName = String(row.account_name || '').trim();
     const email = String(row.email || '').trim().toLowerCase();
     const categoryName = String(row.category_name || '').trim();
     const companyName = String(row.company_name || '').trim();
+    const policyNumber = String(row.policy_number || '').trim();
 
     if (agentName) agentNames.add(agentName);
     if (accountName) accountAgentByName.set(accountName, agentName || null);
@@ -95,7 +74,34 @@ async function run() {
         accountName,
       });
     }
-  });
+
+    if (policyNumber && email) {
+      policyRows.push({
+        policyNumber,
+        startDate: row.policy_start_date,
+        endDate: row.policy_end_date,
+        premiumAmount: Number(row.premium_amount) || undefined,
+        categoryName,
+        companyName,
+        email,
+      });
+    }
+  }
+
+  const ext = path.extname(filePath).toLowerCase();
+  if (ext === '.csv') {
+    await new Promise((resolve, reject) => {
+      fs.createReadStream(filePath)
+        .pipe(parse({ columns: true, skip_empty_lines: true, trim: true }))
+        .on('data', consumeRow)
+        .on('end', resolve)
+        .on('error', reject);
+    });
+  } else {
+    const workbook = XLSX.readFile(filePath);
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+    XLSX.utils.sheet_to_json(sheet, { defval: '', raw: false }).forEach(consumeRow);
+  }
 
   const agents = await upsertByField(Agent, 'name', [...agentNames]);
   const agentIdByName = new Map(agents.map((a) => [a.name, a._id.toString()]));
@@ -149,18 +155,6 @@ async function run() {
   const users = await User.find({ email: { $in: userEmails } }).lean();
   const userIdByEmail = new Map(users.map((u) => [u.email, u._id.toString()]));
 
-  const policyRows = rows
-    .map((row) => ({
-      policyNumber: String(row.policy_number || '').trim(),
-      startDate: row.policy_start_date,
-      endDate: row.policy_end_date,
-      premiumAmount: Number(row.premium_amount) || undefined,
-      categoryName: String(row.category_name || '').trim(),
-      companyName: String(row.company_name || '').trim(),
-      email: String(row.email || '').trim().toLowerCase(),
-    }))
-    .filter((r) => r.policyNumber && r.email);
-
   parentPort.postMessage({
     ok: true,
     rows: policyRows,
@@ -175,7 +169,7 @@ async function run() {
       categories: categoryNames.size,
       carriers: carrierNames.size,
       users: userEmails.length,
-      totalRows: rows.length,
+      totalRows,
     },
   });
 }

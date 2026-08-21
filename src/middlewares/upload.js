@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const multer = require('multer');
+const { upload: uploadConfig } = require('../config/env');
 
 const uploadDir = path.resolve(__dirname, '../../uploads');
 fs.mkdirSync(uploadDir, { recursive: true });
@@ -23,5 +24,5 @@ function fileFilter(req, file, cb) {
 module.exports = multer({
   storage,
   fileFilter,
-  limits: { fileSize: 25 * 1024 * 1024 },
+  limits: { fileSize: uploadConfig.maxFileSizeMb * 1024 * 1024 },
 });

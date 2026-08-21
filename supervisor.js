@@ -55,6 +55,7 @@ async function monitorLoop() {
     logger.warn(`CPU usage ${usage.toFixed(1)}% (${consecutiveHighSamples}/${cpuConfig.sustainedSamples} high samples)`);
   } else {
     consecutiveHighSamples = 0;
+    logger.info(`CPU usage ${usage.toFixed(1)}%`);
   }
 
   if (consecutiveHighSamples >= cpuConfig.sustainedSamples) {

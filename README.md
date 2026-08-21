@@ -165,7 +165,34 @@ A process can't reliably restart itself while it's the one pegging the CPU, so t
 supervisor/child split is what actually makes "restart the server at 70%" possible
 rather than just crashing it.
 
-`GET /health/cpu` reports the current sampled usage on demand.
+`GET /health/cpu` reports the current sampled usage on demand. On top of that, the
+supervisor logs the sampled usage on **every** check — `INFO` while it's under the
+threshold, `WARN` once it isn't — so the tracking itself is visible continuously in
+the terminal, not just at the moment of a restart.
+
+### Trying it out
+
+```bash
+npm start
+```
+
+Watch the terminal: a `CPU usage NN.N%` line appears every `CPU_CHECK_INTERVAL_MS`
+(5s by default) on its own, no action needed. `curl http://localhost:4000/health/cpu`
+gives the same number on demand.
+
+To actually see a restart happen without needing to peg a real CPU core, drop the
+threshold for one run so ordinary background usage crosses it:
+
+```bash
+CPU_THRESHOLD_PERCENT=5 CPU_SUSTAINED_SAMPLES=2 CPU_CHECK_INTERVAL_MS=2000 npm start
+```
+
+Within a few seconds you'll see the sustained-high-samples warning, `SIGTERM`, the
+old pid exiting, and a new pid starting — the same sequence real 70% usage would
+trigger, just reached instantly. To see it happen at the real 70% mark with genuine
+load, run a big upload in parallel (see *Upload* above) or any CPU stress tool
+(`stress-ng --cpu $(nproc)`, `yes > /dev/null &` a few times, etc.) alongside
+`npm start` at the default threshold.
 
 **What happens to an in-flight request when this fires** — e.g. someone's mid-upload
 when CPU crosses the threshold, which is realistic, since a big upload is itself

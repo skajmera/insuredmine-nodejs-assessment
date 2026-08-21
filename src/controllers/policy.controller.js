@@ -16,8 +16,11 @@ async function search(req, res, next) {
 
 async function aggregateByUser(req, res, next) {
   try {
-    const result = await aggregatePoliciesByUser();
-    res.json({ count: result.length, users: result });
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 50));
+
+    const result = await aggregatePoliciesByUser({ page, limit });
+    res.json(result);
   } catch (err) {
     next(err);
   }

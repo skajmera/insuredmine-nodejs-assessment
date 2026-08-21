@@ -3,6 +3,7 @@ const { mongoose } = require('../config/database');
 const userSchema = new mongoose.Schema(
   {
     firstname: { type: String, required: true, trim: true },
+    firstnameLower: { type: String, required: true, index: true },
     dob: { type: Date },
     address: { type: String, trim: true },
     phone: { type: String, trim: true },
@@ -15,7 +16,5 @@ const userSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
-
-userSchema.index({ firstname: 1 });
 
 module.exports = mongoose.model('User', userSchema);

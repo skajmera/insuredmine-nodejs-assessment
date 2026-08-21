@@ -6,8 +6,9 @@ function escapeRegex(value) {
 }
 
 async function searchPoliciesByUsername(username) {
+  const prefix = escapeRegex(username.toLowerCase());
   const users = await User.find({
-    firstname: new RegExp(`^${escapeRegex(username)}`, 'i'),
+    firstnameLower: new RegExp(`^${prefix}`),
   }).lean();
 
   if (!users.length) return [];
@@ -22,8 +23,10 @@ async function searchPoliciesByUsername(username) {
     .lean();
 }
 
-async function aggregatePoliciesByUser() {
-  return Policy.aggregate([
+async function aggregatePoliciesByUser({ page = 1, limit = 50 } = {}) {
+  const skip = (page - 1) * limit;
+
+  const [result] = await Policy.aggregate([
     {
       $group: {
         _id: '$userId',
@@ -56,7 +59,20 @@ async function aggregatePoliciesByUser() {
       },
     },
     { $sort: { policyCount: -1 } },
+    {
+      $facet: {
+        data: [{ $skip: skip }, { $limit: limit }],
+        totalCount: [{ $count: 'count' }],
+      },
+    },
   ]);
+
+  return {
+    users: result.data,
+    total: result.totalCount[0]?.count || 0,
+    page,
+    limit,
+  };
 }
 
 module.exports = { searchPoliciesByUsername, aggregatePoliciesByUser };

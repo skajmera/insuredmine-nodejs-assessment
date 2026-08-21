@@ -135,6 +135,7 @@ async function run() {
               $setOnInsert: {
                 email,
                 firstname: u.firstname,
+                firstnameLower: String(u.firstname || '').toLowerCase(),
                 dob: u.dob,
                 address: u.address,
                 phone: u.phone,

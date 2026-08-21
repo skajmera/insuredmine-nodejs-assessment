@@ -73,12 +73,58 @@ curl "http://localhost:4000/api/policies/search?username=Lura"
 
 ### Aggregated policies per user
 
-`GET /api/policies/aggregate` — one row per user: policy count, total premium, and
-the list of their policies.
+`GET /api/policies/aggregate?page=1&limit=50` — one row per user: policy count,
+total premium, and the list of their policies. Paginated (`limit` capped at 200)
+since an ungrouped response here would mean every user in the database, each with
+every policy embedded, in one payload.
 
 ```bash
-curl http://localhost:4000/api/policies/aggregate
+curl "http://localhost:4000/api/policies/aggregate?page=1&limit=50"
+# => { users: [...], total: 1149, page: 1, limit: 50 }
 ```
+
+Note: pagination bounds the *response size*, not the work done — grouping by user
+still means scanning the whole `Policy` collection, since every policy has to be
+looked at to know which user it belongs to. For a much bigger collection than this
+assessment's, the next step would be a materialized per-user summary that's updated
+incrementally on each policy write, instead of re-aggregating on every read — not
+done here since nothing in this assessment's scope needs it yet.
+
+## Indexing & transactions
+
+Added, and why:
+
+- Unique index on every natural key (`Agent.name`, `Account.accountName`,
+  `Category.categoryName`, `Carrier.companyName`, `User.email`,
+  `Policy.policyNumber`) — these are exactly the fields every upsert during upload
+  filters on, so they're both a correctness constraint and the index that makes the
+  upload's `find({field: {$in: [...]}})` / `bulkWrite` upserts fast instead of
+  scanning.
+- `Policy.userId` — the search endpoint's `Policy.find({ userId: { $in: [...] } })`
+  and the aggregate endpoint's `$lookup` both key off it.
+- `User.firstnameLower` — the search endpoint matches `firstname` case-insensitively.
+  A plain index on `firstname` doesn't actually help here: checked with
+  `.explain("executionStats")`, and a case-insensitive `$regex` against a
+  case-sensitive index still examines every key (1149 of 1149 in the sample data —
+  a full index scan in disguise). Storing a lowercased `firstnameLower` alongside
+  `firstname` and matching a case-sensitive anchored regex against *that* is what
+  actually gets a tight index range scan (2 keys examined for the same query, per
+  `explain`).
+
+Deliberately not added: an index on `Policy.categoryId`, `Policy.companyId`,
+`Account.agentId`, or `User.accountId`. Nothing currently queries by any of them —
+they only ever get read via `$lookup`/`populate` on the *other* side (`_id`, which
+is already indexed by default). An index that isn't backing an actual query is just
+extra write cost on every insert for no read benefit.
+
+No multi-document transactions, on purpose. Every write in this codebase is either
+a single independent document, or an idempotent upsert keyed by a natural key — so
+there's no place where two documents need to succeed or fail together for
+correctness; a retry after a partial failure just converges to the same end state.
+The upload flow specifically *wants* partial success (`ordered: false` bulk writes)
+so a handful of bad rows don't roll back the other thousand good ones. On top of
+that, multi-document transactions need a replica set — a standalone `mongod` (what
+this was tested against locally) can't run them at all.
 
 ## Task 2 — ops features
 

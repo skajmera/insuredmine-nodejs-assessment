@@ -1,13 +1,18 @@
 const express = require('express');
 const morgan = require('morgan');
+const helmet = require('helmet');
+const mongoSanitize = require('express-mongo-sanitize');
 require('./models');
 const routes = require('./routes');
 const errorHandler = require('./middlewares/errorHandler');
+const { apiLimiter } = require('./middlewares/rateLimiter');
 const { getCpuUsagePercent } = require('./utils/cpuUsage');
 
 const app = express();
 
-app.use(express.json());
+app.use(helmet());
+app.use(express.json({ limit: '10kb' }));
+app.use(mongoSanitize());
 app.use(morgan('dev'));
 
 app.get('/health', (req, res) => {
@@ -19,7 +24,7 @@ app.get('/health/cpu', async (req, res) => {
   res.json({ cpuUsagePercent: Number(usage.toFixed(2)) });
 });
 
-app.use('/api', routes);
+app.use('/api', apiLimiter, routes);
 
 app.use(errorHandler);
 

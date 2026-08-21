@@ -16,4 +16,10 @@ module.exports = {
     workerPoolSize: Number(process.env.UPLOAD_WORKER_POOL_SIZE) || 4,
     maxFileSizeMb: Number(process.env.UPLOAD_MAX_FILE_SIZE_MB) || 200,
   },
+
+  rateLimit: {
+    windowMs: Number(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
+    apiMax: Number(process.env.RATE_LIMIT_API_MAX) || 300,
+    uploadMax: Number(process.env.RATE_LIMIT_UPLOAD_MAX) || 20,
+  },
 };

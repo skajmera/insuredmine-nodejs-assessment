@@ -3,7 +3,7 @@ const { searchPoliciesByUsername, aggregatePoliciesByUser } = require('../servic
 async function search(req, res, next) {
   try {
     const { username } = req.query;
-    if (!username) {
+    if (!username || typeof username !== 'string') {
       return res.status(400).json({ message: 'Query param "username" is required' });
     }
 

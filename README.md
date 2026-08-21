@@ -8,6 +8,30 @@ message scheduler, built for the InsuredMine Node.js developer assessment.
 Node.js, Express, MongoDB (Mongoose), `worker_threads`, Agenda (Mongo-backed job
 scheduling), Multer, SheetJS (`xlsx`).
 
+## Security
+
+- **Helmet** — standard security headers (`X-Content-Type-Options`,
+  `X-Frame-Options`, HSTS, etc.) on every response.
+- **Rate limiting** (`express-rate-limit`) — a general limit on all of `/api`
+  (`RATE_LIMIT_API_MAX`, default 300/15min per IP), plus a much tighter one
+  specifically on `POST /api/upload` (`RATE_LIMIT_UPLOAD_MAX`, default 20/15min) —
+  it's the one endpoint that spins up worker threads and does the heaviest DB
+  writes, so it's the one worth protecting separately from general API traffic.
+  Verified: the 21st upload request in a 15-minute window gets `429` with a
+  `Retry-After` header telling the client when to come back.
+- **NoSQL injection** — `express-mongo-sanitize` strips any `$`/`.`-prefixed keys
+  from `req.body`/`req.query`/`req.params` before a route ever sees them. This is a
+  real gap, not a hypothetical one: `GET /api/policies/search?username[$ne]=` turns
+  `username` into `{ $ne: '' }` under Express's default query parser, and without
+  sanitizing that, it reached `.toLowerCase()` in the search service and blew up
+  into a raw 500. Each user-supplied field the controllers accept (`username`,
+  `message`, `day`, `time`) also gets an explicit `typeof === 'string'` check as a
+  second layer, so a wrong-shaped value is a clean `400` either way, not a stack
+  trace.
+- `express.json({ limit: '10kb' })` — the JSON endpoints here (scheduling a
+  message) never need more than that; capping it is a one-line guard against
+  oversized-body abuse.
+
 ## Data model
 
 The sheet is normalized into six collections instead of one flat table, so a policy

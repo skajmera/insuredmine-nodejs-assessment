@@ -33,14 +33,18 @@ function restartChild() {
   logger.warn(
     `CPU usage stayed above ${cpuConfig.thresholdPercent}% for ${cpuConfig.sustainedSamples} checks, restarting server (pid ${child.pid})`
   );
+  logger.warn(`Sending SIGTERM, allowing up to ${cpuConfig.shutdownGraceMs}ms to finish in-flight work before SIGKILL`);
 
   const dyingChild = child;
   dyingChild.once('exit', () => startChild());
   dyingChild.kill('SIGTERM');
 
   setTimeout(() => {
-    if (!dyingChild.killed) dyingChild.kill('SIGKILL');
-  }, 5000);
+    if (!dyingChild.killed) {
+      logger.warn(`Server (pid ${dyingChild.pid}) did not exit within the grace period, sending SIGKILL`);
+      dyingChild.kill('SIGKILL');
+    }
+  }, cpuConfig.shutdownGraceMs);
 }
 
 async function monitorLoop() {

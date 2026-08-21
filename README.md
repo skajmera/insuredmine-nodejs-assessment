@@ -143,6 +143,31 @@ rather than just crashing it.
 
 `GET /health/cpu` reports the current sampled usage on demand.
 
+**What happens to an in-flight request when this fires** — e.g. someone's mid-upload
+when CPU crosses the threshold, which is realistic, since a big upload is itself
+CPU-heavy enough to be *why* usage crossed 70% in the first place:
+
+- `SIGTERM` doesn't kill anything by itself. `server.js`'s handler calls
+  `server.close()`, which stops accepting new connections but waits for in-flight
+  requests to finish — confirmed by sending `SIGTERM` mid-upload and watching the
+  process stay alive until the upload's response was sent.
+- The supervisor's own fallback timer (`CPU_SHUTDOWN_GRACE_MS`, default 30s) is what
+  actually forces the issue if graceful shutdown takes too long: past that, it sends
+  `SIGKILL`, which *does* kill everything immediately, worker threads included,
+  mid-write if need be. Verified this by loading ~30k rows (real upload time ~15-25s)
+  and letting the CPU monitor fire a restart while it was running: with the grace
+  period at 30s, all 30k rows landed; cut down to the old hardcoded 5s, the process
+  got force-killed with only ~4k of 30k rows in — same request, no response ever
+  reached the client, and the import was left incomplete.
+- That incomplete-import outcome is recoverable, not corrupt, specifically because
+  every write in the upload path is an idempotent upsert keyed by a natural key (see
+  *Indexing & transactions* below): re-uploading the exact same file after a forced
+  kill just fills in whatever didn't make it in, nothing gets double-inserted.
+- 30 seconds is a bounded best-effort, not a guarantee — a large enough file can still
+  exceed it and get force-killed, which is an accepted trade-off (Kubernetes' own
+  default pod termination grace period is also 30s) rather than waiting indefinitely
+  for a shutdown that, on a genuinely stuck process, might never happen on its own.
+
 ### Scheduled message insert
 
 `POST /api/messages` — body: `{ "message": "...", "day": "YYYY-MM-DD", "time": "HH:mm" }`.

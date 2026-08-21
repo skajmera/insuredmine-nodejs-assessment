@@ -8,6 +8,7 @@ module.exports = {
     checkIntervalMs: Number(process.env.CPU_CHECK_INTERVAL_MS) || 5000,
     thresholdPercent: Number(process.env.CPU_THRESHOLD_PERCENT) || 70,
     sustainedSamples: Number(process.env.CPU_SUSTAINED_SAMPLES) || 3,
+    shutdownGraceMs: Number(process.env.CPU_SHUTDOWN_GRACE_MS) || 30000,
   },
 
   upload: {

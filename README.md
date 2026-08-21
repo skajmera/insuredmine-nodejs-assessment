@@ -34,13 +34,17 @@ same file is idempotent.
 
 ### Upload (worker-threads based)
 
-`POST /api/upload` — multipart form, field name `file` (`.csv`, `.xlsx`, `.xls`).
+`POST /api/upload` — multipart form, field name `file` (`.csv`, `.xlsx`, `.xls`,
+25MB limit). Requests are rejected above that in `src/middlewares/upload.js`.
 
 The request thread never touches parsing or DB writes directly:
 
-1. A **master-data worker** parses the sheet, dedupes Agent/Account/User/Category/
+1. A **master-data worker** reads the sheet, dedupes Agent/Account/User/Category/
    Carrier by their natural key, and upserts them, returning id maps to the main
-   thread.
+   thread. `.csv` files are streamed row-by-row (`fs.createReadStream` piped through
+   `csv-parse`) instead of being read fully into memory — `.xlsx`/`.xls` still go
+   through SheetJS's `readFile`, since the binary spreadsheet format has to be
+   loaded whole regardless of library.
 2. The policy rows are chunked (`UPLOAD_CHUNK_SIZE`, default 500) and fanned out
    across a **worker pool** (`UPLOAD_WORKER_POOL_SIZE`, capped at `os.cpus().length`)
    that bulk-upserts `Policy` documents in parallel.

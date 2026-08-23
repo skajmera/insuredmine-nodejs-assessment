@@ -16,7 +16,9 @@ const allowedExtensions = new Set(['.csv', '.xlsx', '.xls']);
 function fileFilter(req, file, cb) {
   const ext = path.extname(file.originalname).toLowerCase();
   if (!allowedExtensions.has(ext)) {
-    return cb(new Error('Only .csv, .xlsx and .xls files are allowed'));
+    const err = new Error('Only .csv, .xlsx and .xls files are allowed');
+    err.status = 400;
+    return cb(err);
   }
   cb(null, true);
 }

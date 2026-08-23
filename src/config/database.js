@@ -7,7 +7,7 @@ async function connectDB(uri = mongoUri) {
   if (mongoose.connection.readyState === 1) {
     return mongoose.connection;
   }
-  await mongoose.connect(uri);
+  await mongoose.connect(uri, { serverSelectionTimeoutMS: 5000 });
   return mongoose.connection;
 }
 
